@@ -1,59 +1,87 @@
-# FleetOps — scheletro applicazione (Step 1)
+# FleetOps — applicazione (Step 3: Anagrafica veicoli)
 
-Scheletro di applicazione web **React + Vite** che riproduce la struttura di
-navigazione della PoC (`Fleet Dashboard PoC (standalone).html`), pensato per
-essere riempito ed espanso un pezzo alla volta finché non parlerà con un vero
-**Traccar Server**.
+Applicazione web **React + Vite + TypeScript** che riproduce la struttura di
+navigazione e le schermate della PoC (`Fleet Dashboard PoC (standalone).html`),
+pensata per essere riempita ed espansa un pezzo alla volta finché non parlerà
+con un vero **Traccar Server**.
+
+> Stato attuale: **Step 3 completato** — Mappa operativa e Anagrafica
+> veicoli sono funzionanti con dati finti (mock); le altre 5 sezioni sono
+> ancora segnaposto. Vedi "Avanzamento del progetto" più sotto per il
+> dettaglio passo-per-passo.
 
 ## Perché queste scelte tecniche
 
 - **Vite** invece di Create React App: più veloce, più semplice, standard
   attuale per progetti React nuovi.
-  -- **react-router-dom**: stessa libreria di routing usata da traccar-web,
-  per la navigazione tra le sezioni della sidebar.
+- **TypeScript** (`.ts`/`.tsx`), non JavaScript puro: type-checking in fase
+  di scrittura del codice invece di scoprire i bug solo nel browser a
+  runtime. La web app ufficiale di Traccar (`traccar/traccar-web`) è in
+  JavaScript, ma ne seguiamo comunque i pattern architetturali (struttura
+  cartelle, routing, ecc.), aggiungendo la sicurezza dei tipi.
+- **react-router-dom** (in modalità `HashRouter`, URL tipo `/#/veicoli`):
+  stessa libreria di routing usata da traccar-web. `HashRouter` invece di
+  `BrowserRouter` perché funziona sempre anche dentro iframe di anteprima o
+  hosting statico senza configurazione server dedicata.
 - **Nessuna libreria UI (MUI, Tailwind, ecc.) per ora**: solo CSS/stili
-  inline, per restare semplici. Potremo
+  inline, per restare semplici mentre impari le basi di React. Potremo
   introdurre una libreria di componenti in un passo successivo, se utile.
-- **Nessun Redux ancora**: le pagine sono per ora segnaposto statici. Lo
-  stato globale (dispositivi, posizioni, sessione) arriverà quando
-  collegheremo i dati reali — probabilmente con Redux Toolkit, come fa
-  traccar-web (`@reduxjs/toolkit`), per restare coerenti con il progetto
-  ufficiale.
+- **Nessun Redux ancora**: lo stato è gestito con `useState` locale a ogni
+  pagina ("lifting state up"). Lo stato globale (dispositivi, posizioni,
+  sessione) arriverà quando collegheremo i dati reali — probabilmente con
+  Redux Toolkit, come fa traccar-web (`@reduxjs/toolkit`), per restare
+  coerenti con il progetto ufficiale.
+- **ESLint 9 (flat config) + Prettier**: verifica automatica di stile e
+  qualità del codice, eseguita prima di ogni build/deploy.
 
 ## Struttura delle cartelle
 
 ```
 fleet-dashboard-app/
 ├── index.html              punto di ingresso HTML (quasi vuoto: solo <div id="root">)
-├── vite.config.js          configurazione di Vite
+├── vite.config.ts          configurazione di Vite
+├── tsconfig.json / tsconfig.node.json   configurazione TypeScript (app + Vite)
+├── eslint.config.js        regole di lint (ESLint 9, flat config)
+├── .prettierrc             regole di formattazione automatica
 ├── src/
 │   ├── main.tsx             monta l'app React nel DOM
-│   ├── App.tsx               definisce le rotte (URL -> pagina)
-│   ├── index.css             variabili CSS globali (colori, spaziature)
+│   ├── App.tsx              definisce le rotte (URL -> pagina)
+│   ├── index.css            variabili CSS globali (colori, spaziature, utility .badge/.mono)
 │   ├── layout/
-│   │   ├── AppLayout.tsx     guscio comune: Sidebar + TopBar + contenuto pagina
-│   │   ├── Sidebar.tsx       menu laterale scuro (Monitoraggio / Gestione)
-│   │   ├── TopBar.tsx        intestazione (titolo, ricerca, orologio)
-│   │   ├── navConfig.ts      dati delle voci di menu della sidebar
-│   │   └── pageMeta.ts       titolo/sottotitolo per ogni pagina
+│   │   ├── AppLayout.tsx    guscio comune: Sidebar + TopBar + contenuto pagina
+│   │   ├── Sidebar.tsx      menu laterale scuro (Monitoraggio / Gestione)
+│   │   ├── TopBar.tsx       intestazione (titolo, ricerca, orologio)
+│   │   ├── navConfig.ts     dati delle voci di menu della sidebar
+│   │   └── pageMeta.ts      titolo/sottotitolo per ogni pagina
 │   ├── components/
-│   │   └── PlaceholderSection.tsx   riquadro "in costruzione" riusabile
+│   │   ├── PlaceholderSection.tsx   riquadro "in costruzione" riusabile
+│   │   └── VehicleCategoryIcon.tsx  icona lineare per categoria veicolo (leggero/pesante/speciale)
+│   ├── types/
+│   │   ├── vehicle.ts              tipo Vehicle (dati "live": posizione, stato, velocità)
+│   │   └── vehicleRegistry.ts      tipo VehicleRegistryEntry (estende Vehicle con dati di anagrafica)
+│   ├── common/                     "dizionari" tipizzati etichetta+colore per stato/categoria/telemetria
+│   │   ├── vehicleStatus.ts
+│   │   ├── vehicleCategory.ts
+│   │   └── vehicleTelemetry.ts
+│   ├── data/                       dati finti (mock), pronti per essere sostituiti da chiamate reali
+│   │   ├── mockVehicles.ts
+│   │   └── mockFleetRegistry.ts
 │   ├── pages/                 una cartella per ciascuna sezione della sidebar
-│   │   ├── MapView/           Mappa operativa
-│   │   ├── VehicleRegistry/   Anagrafica veicoli
-│   │   ├── Alarms/            Allarmi e regole
-│   │   ├── Maintenance/       Manutenzione
-│   │   ├── Activity/          Attività
-│   │   ├── Reports/           KPI e report
-│   │   └── DeviceStatus/      Stato dispositivi
+│   │   ├── MapView/           Mappa operativa — COMPLETA (Step 2)
+│   │   ├── VehicleRegistry/   Anagrafica veicoli — COMPLETA (Step 3)
+│   │   ├── Alarms/            Allarmi e regole — segnaposto
+│   │   ├── Maintenance/       Manutenzione — segnaposto
+│   │   ├── Activity/          Attività — segnaposto
+│   │   ├── Reports/           KPI e report — segnaposto
+│   │   └── DeviceStatus/      Stato dispositivi — segnaposto
 │   └── services/
-│       └── traccarApi.ts     "ponte" verso Traccar (per ora solo commenti/documentazione,
-│                              nessuna pagina lo usa ancora)
+│       └── traccarApi.ts     "ponte" verso Traccar (per ora solo funzioni stub che lanciano
+│                              un errore "non implementato"; nessuna pagina lo usa ancora)
 ```
 
 Ogni pagina vive nella propria cartella sotto `src/pages/`: quando la
-riempiremo di contenuto reale, tabelle, mappa ecc., i suoi file (componenti
-piccoli, dati mock, stili) staranno tutti lì dentro, senza sporcare le altre
+riempiamo di contenuto reale, tabelle, mappa ecc., i suoi file (componenti
+piccoli, dati mock, stili) stanno tutti lì dentro, senza sporcare le altre
 sezioni. Questa è la "modularità" richiesta: ogni sezione è un'isola che si
 può modificare o anche riscrivere da zero senza impattare le altre.
 
@@ -69,6 +97,14 @@ npm run dev      # avvia il server di sviluppo su http://localhost:5173
 Ogni modifica ai file dentro `src/` viene mostrata quasi istantaneamente nel
 browser, senza bisogno di ricaricare la pagina a mano.
 
+Prima di ogni commit/push conviene eseguire anche:
+
+```bash
+npm run build              # compila TypeScript (tsc -b) e crea la build di produzione
+npx eslint .                # controlla la qualità del codice
+npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
+```
+
 ## Cosa fa già e cosa non fa ancora
 
 **Fa già:**
@@ -77,24 +113,45 @@ browser, senza bisogno di ricaricare la pagina a mano.
 - Naviga tra le 7 sezioni tramite i link della sidebar, con evidenziazione
   della voce attiva e URL che cambia (es. `/veicoli`, `/allarmi`...).
 - Ha un orologio funzionante in alto a destra, come nella PoC.
+- **Mappa operativa**: lista dei 7 veicoli mock + mappa Leaflet con i
+  relativi marker, selezione sincronizzata tra lista e mappa.
+- **Anagrafica veicoli**: tabella "Registro flotta" (targa, modello, tipo,
+  odometro, stato) cliccabile per aprire una scheda di dettaglio con
+  telemetria live semplificata (velocità, accensione, qualità GPS) e i dati
+  di assegnazione/anagrafica completi (reparto, VIN, immatricolazione,
+  alimentazione, odometro, allestimento).
 
 **Non fa ancora (arriverà nei prossimi passi):**
 
-- Nessuna sezione mostra dati veri: sono tutte un riquadro segnaposto.
-- La mappa, le tabelle, i grafici e le azioni (es. "Presa in carico") non
-  esistono ancora.
-- Nessuna connessione a un Traccar Server reale: `src/services/traccarApi.js`
-  esiste solo come documentazione di cosa dovrà fare.
+- La scheda di dettaglio veicolo non include ancora la "Cronologia eventi"
+  (timeline) né la "Disponibilità segnali" presenti nella PoC — rimandate a
+  un passo successivo per mantenere gli incrementi piccoli.
+- Il pulsante "Mostra su mappa" nella scheda veicolo apre la pagina Mappa
+  ma non pre-seleziona ancora il veicolo lì (richiede di condividere lo
+  stato di selezione tra le due pagine).
+- Le altre 5 sezioni (Allarmi, Manutenzione, Attività, KPI, Stato
+  dispositivi) sono ancora un riquadro segnaposto.
+- Nessuna connessione a un Traccar Server reale: `src/services/traccarApi.ts`
+  esiste solo come documentazione (funzioni stub) di cosa dovrà fare.
+
+## Avanzamento del progetto
+
+| Step | Contenuto                                                               | Stato         |
+| ---- | ----------------------------------------------------------------------- | ------------- |
+| 1    | Scheletro app React/Vite: layout, sidebar, routing, 7 pagine segnaposto | ✅ Completato |
+| —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)           | ✅ Completato |
+| 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker          | ✅ Completato |
+| 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio     | ✅ Completato |
+| 4    | Modulo servizi API (mock → pronto per Traccar reale)                    | ⏳ Da fare    |
+| 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi  | ⏳ Da fare    |
+| 6    | Collegamento reale a Traccar Server (login, `/api/devices`, WebSocket)  | ⏳ Da fare    |
 
 ## Prossimi passi pianificati
 
-1. Sezione **Mappa operativa**: lista veicoli (con dati finti/mock) + mappa
-   Leaflet con i marker della flotta.
-2. Sezione **Anagrafica veicoli**: tabella + vista di dettaglio.
-3. Modulo dati "mock" condiviso, pronto per essere sostituito dalle chiamate
-   reali a `traccarApi.js`.
-4. Le altre sezioni (Allarmi, Manutenzione, Attività, KPI, Stato dispositivi).
-5. Collegamento vero a Traccar Server: login, `GET /api/devices`,
+1. Modulo dati "mock" condiviso/rifinito, pronto per essere sostituito dalle
+   chiamate reali a `traccarApi.ts`.
+2. Le altre sezioni (Allarmi, Manutenzione, Attività, KPI, Stato dispositivi).
+3. Collegamento vero a Traccar Server: login, `GET /api/devices`,
    `GET /api/positions`, WebSocket per gli aggiornamenti live — seguendo lo
    stesso schema della web app ufficiale (`SocketController.jsx`,
    `store/session.js`, `store/devices.js` nel repo `traccar/traccar-web`).

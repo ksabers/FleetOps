@@ -67,3 +67,14 @@ body {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Font a larghezza fissa ("monospace") per dati tecnici/numerici: targhe,
+   VIN, chilometraggio... Nella PoC originale questi valori usano sempre un
+   font monospace, perché rende più facile confrontare colpo d'occhio numeri
+   e codici di lunghezza diversa (le cifre occupano tutte la stessa
+   larghezza, a differenza di un font "normale"). Introdotta nello Step 3
+   (Anagrafica veicoli). */
+.mono {
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', monospace;
+}
