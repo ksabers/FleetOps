@@ -1,0 +1,21 @@
+<!--
+  Questo è l'UNICO file HTML "reale" dell'applicazione (a differenza della PoC,
+  che era tutta racchiusa in un solo .html gigante generato da un tool AI).
+  Qui dentro non scriveremo quasi nulla a mano: Vite si occupa di iniettare
+  gli script e i CSS generati durante la build. Il <div id="root"> è il punto
+  in cui React "monta" (cioè disegna) tutta l'interfaccia.
+-->
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FleetOps - Centro Operativo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- src/main.jsx è il punto di ingresso dell'app React: da qui parte tutto. -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
