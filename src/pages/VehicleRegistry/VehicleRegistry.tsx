@@ -11,19 +11,49 @@
 // (la selezione cambia solo il marker evidenziato); qui invece tabella e
 // dettaglio si escludono a vicenda — coerente con la PoC, dove "Registro
 // flotta" e la scheda veicolo occupano l'intera area, uno alla volta.
+//
+// Novità dello Step 4: l'anagrafica non arriva più da un import diretto di
+// mockFleetRegistry, ma da "useAsyncData(fetchFleetRegistry)" — lo stesso
+// hook riutilizzabile usato anche da MapView.tsx. Finché i dati non sono
+// arrivati mostriamo un caricamento; se qualcosa va storto, un messaggio di
+// errore.
 import { useState } from 'react';
 
-import { mockFleetRegistry } from '../../data/mockFleetRegistry';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import { fetchFleetRegistry } from '../../services/fleetService';
+import PlaceholderSection from '../../components/PlaceholderSection';
 import FleetRegistryTable from './FleetRegistryTable';
 import VehicleDetailView from './VehicleDetailView';
 
 export default function VehicleRegistry() {
+  const { data: fleetRegistry, isLoading, error } = useAsyncData(fetchFleetRegistry);
+
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
-  // ".find()" cerca nell'array il primo elemento che soddisfa la condizione
-  // e restituisce "undefined" se non lo trova (es. se selectedVehicleId è
-  // null, la condizione non è mai vera per nessun elemento).
-  const selectedVehicle = mockFleetRegistry.find(
+  // Stato 1 di 3: caricamento in corso.
+  if (isLoading) {
+    return (
+      <PlaceholderSection
+        title="Caricamento anagrafica…"
+        description="Recupero i dati della flotta dal registro."
+      />
+    );
+  }
+
+  // Stato 2 di 3: errore (o dati comunque assenti, per sicurezza).
+  if (error || !fleetRegistry) {
+    return (
+      <PlaceholderSection
+        title="Impossibile caricare l'anagrafica"
+        description={error ?? 'Errore sconosciuto durante il caricamento.'}
+      />
+    );
+  }
+
+  // Stato 3 di 3: dati pronti. ".find()" cerca nell'array il primo elemento
+  // che soddisfa la condizione e restituisce "undefined" se non lo trova
+  // (es. se selectedVehicleId è null, la condizione non è mai vera).
+  const selectedVehicle = fleetRegistry.find(
     (vehicle) => vehicle.id === selectedVehicleId,
   );
 
@@ -41,9 +71,6 @@ export default function VehicleRegistry() {
   }
 
   return (
-    <FleetRegistryTable
-      vehicles={mockFleetRegistry}
-      onSelectVehicle={setSelectedVehicleId}
-    />
+    <FleetRegistryTable vehicles={fleetRegistry} onSelectVehicle={setSelectedVehicleId} />
   );
 }

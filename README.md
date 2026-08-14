@@ -1,14 +1,16 @@
-# FleetOps — applicazione (Step 3: Anagrafica veicoli)
+# FleetOps — applicazione (Step 4: modulo servizi API)
 
 Applicazione web **React + Vite + TypeScript** che riproduce la struttura di
 navigazione e le schermate della PoC (`Fleet Dashboard PoC (standalone).html`),
 pensata per essere riempita ed espansa un pezzo alla volta finché non parlerà
 con un vero **Traccar Server**.
 
-> Stato attuale: **Step 3 completato** — Mappa operativa e Anagrafica
-> veicoli sono funzionanti con dati finti (mock); le altre 5 sezioni sono
-> ancora segnaposto. Vedi "Avanzamento del progetto" più sotto per il
-> dettaglio passo-per-passo.
+> Stato attuale: **Step 4 completato** — Mappa operativa e Anagrafica
+> veicoli caricano i dati tramite un vero livello "servizi" asincrono
+> (`fleetService.ts` + hook `useAsyncData`), con stati di caricamento ed
+> errore, ancora appoggiato a dati finti (mock) ma pronto per essere
+> ricollegato al vero server. Le altre 5 sezioni sono ancora segnaposto.
+> Vedi "Avanzamento del progetto" più sotto per il dettaglio passo-per-passo.
 
 ## Perché queste scelte tecniche
 
@@ -31,6 +33,13 @@ con un vero **Traccar Server**.
   sessione) arriverà quando collegheremo i dati reali — probabilmente con
   Redux Toolkit, come fa traccar-web (`@reduxjs/toolkit`), per restare
   coerenti con il progetto ufficiale.
+- **Caricamento dati asincrono fin da ora (Step 4)**: le pagine non leggono
+  più i dati mock in modo sincrono/istantaneo, ma tramite
+  `src/services/fleetService.ts` (funzioni che restituiscono una `Promise`,
+  con un piccolo ritardo simulato) e l'hook riusabile
+  `src/hooks/useAsyncData.ts`, che gestisce gli stati "in caricamento" /
+  "errore" / "dati pronti". È lo stesso schema che serve con un vero server,
+  dove la risposta non arriva mai istantaneamente.
 - **ESLint 9 (flat config) + Prettier**: verifica automatica di stile e
   qualità del codice, eseguita prima di ogni build/deploy.
 
@@ -66,6 +75,8 @@ fleet-dashboard-app/
 │   ├── data/                       dati finti (mock), pronti per essere sostituiti da chiamate reali
 │   │   ├── mockVehicles.ts
 │   │   └── mockFleetRegistry.ts
+│   ├── hooks/
+│   │   └── useAsyncData.ts        hook riusabile: gestisce caricamento/errore/dati di una Promise
 │   ├── pages/                 una cartella per ciascuna sezione della sidebar
 │   │   ├── MapView/           Mappa operativa — COMPLETA (Step 2)
 │   │   ├── VehicleRegistry/   Anagrafica veicoli — COMPLETA (Step 3)
@@ -75,8 +86,12 @@ fleet-dashboard-app/
 │   │   ├── Reports/           KPI e report — segnaposto
 │   │   └── DeviceStatus/      Stato dispositivi — segnaposto
 │   └── services/
+│       ├── fleetService.ts   livello "servizi" usato DAVVERO dalle pagine (Step 4): oggi
+│       │                      avvolge i dati mock in una Promise con un piccolo ritardo;
+│       │                      allo Step 6 chiamerà qui sotto traccarApi
 │       └── traccarApi.ts     "ponte" verso Traccar (per ora solo funzioni stub che lanciano
-│                              un errore "non implementato"; nessuna pagina lo usa ancora)
+│                              un errore "non implementato"; richiamato da fleetService.ts
+│                              a partire dallo Step 6, non ancora dalle pagine)
 ```
 
 Ogni pagina vive nella propria cartella sotto `src/pages/`: quando la
@@ -120,6 +135,10 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
   telemetria live semplificata (velocità, accensione, qualità GPS) e i dati
   di assegnazione/anagrafica completi (reparto, VIN, immatricolazione,
   alimentazione, odometro, allestimento).
+- **Caricamento dati asincrono**: entrambe le pagine sopra mostrano ora uno
+  stato "Caricamento…" mentre i dati arrivano (tramite `fleetService.ts`) e
+  un messaggio d'errore dedicato se qualcosa va storto, invece di leggere i
+  dati mock in modo istantaneo/sincrono come prima.
 
 **Non fa ancora (arriverà nei prossimi passi):**
 
@@ -132,7 +151,9 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 - Le altre 5 sezioni (Allarmi, Manutenzione, Attività, KPI, Stato
   dispositivi) sono ancora un riquadro segnaposto.
 - Nessuna connessione a un Traccar Server reale: `src/services/traccarApi.ts`
-  esiste solo come documentazione (funzioni stub) di cosa dovrà fare.
+  esiste solo come documentazione (funzioni stub) di cosa dovrà fare;
+  `fleetService.ts` lo richiamerà al posto dei dati mock a partire dallo
+  Step 6.
 
 ## Avanzamento del progetto
 
@@ -142,16 +163,16 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 | —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)           | ✅ Completato |
 | 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker          | ✅ Completato |
 | 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio     | ✅ Completato |
-| 4    | Modulo servizi API (mock → pronto per Traccar reale)                    | ⏳ Da fare    |
+| 4    | Modulo servizi API (mock → pronto per Traccar reale)                    | ✅ Completato |
 | 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi  | ⏳ Da fare    |
 | 6    | Collegamento reale a Traccar Server (login, `/api/devices`, WebSocket)  | ⏳ Da fare    |
 
 ## Prossimi passi pianificati
 
-1. Modulo dati "mock" condiviso/rifinito, pronto per essere sostituito dalle
-   chiamate reali a `traccarApi.ts`.
-2. Le altre sezioni (Allarmi, Manutenzione, Attività, KPI, Stato dispositivi).
-3. Collegamento vero a Traccar Server: login, `GET /api/devices`,
+1. Le altre sezioni (Allarmi, Manutenzione, Attività, KPI, Stato dispositivi).
+2. Collegamento vero a Traccar Server: login, `GET /api/devices`,
    `GET /api/positions`, WebSocket per gli aggiornamenti live — seguendo lo
    stesso schema della web app ufficiale (`SocketController.jsx`,
    `store/session.js`, `store/devices.js` nel repo `traccar/traccar-web`).
+   A quel punto basterà modificare `fleetService.ts` per chiamare
+   `traccarApi.ts` al posto dei dati mock: le pagine non cambieranno.

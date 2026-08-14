@@ -56,6 +56,13 @@
 // corpo che genera un errore esplicito: così se qualcuno le richiama per
 // sbaglio prima del tempo, il messaggio in console lo dice chiaramente
 // invece di fallire in modo silenzioso o confuso.
+//
+// Aggiornamento Step 4: le pagine NON chiamano ancora (e non chiameranno mai
+// direttamente) le funzioni di questo file. Parlano invece con
+// src/services/fleetService.ts, che oggi restituisce dati mock avvolti in
+// una Promise (per abituare le pagine a un caricamento asincrono) e che allo
+// Step 6 verrà modificato per richiamare qui dentro login()/getDevices()/
+// getPositions() al posto dei dati finti.
 
 function notImplemented(nomeFunzione: string): never {
   throw new Error(

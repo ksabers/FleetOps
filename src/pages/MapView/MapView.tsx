@@ -6,32 +6,61 @@
 // entrambi, così quando si clicca un veicolo (in lista o sulla mappa)
 // entrambi i componenti si aggiornano restando sincronizzati.
 //
-// Per ora i veicoli arrivano da mockVehicles (dati finti, sempre uguali).
-// Quando allo Step 6 collegheremo il vero Traccar Server, qui cambierà solo
-// la RIGA che fornisce l'array "vehicles" (es. useState + useEffect che
-// chiama traccarApi.getDevices()/getPositions(), o più avanti un vero store
-// Redux) — VehicleList e FleetMap non dovranno cambiare, perché continuano a
-// ricevere semplicemente un array di oggetti Vehicle.
+// Novità dello Step 4: i veicoli non arrivano più da un import diretto di
+// mockVehicles, ma da "useAsyncData(fetchVehicles)" — lo stesso hook
+// riutilizzabile usato anche da VehicleRegistry.tsx. Finché i dati non sono
+// arrivati mostriamo un caricamento; se qualcosa va storto, un messaggio di
+// errore. Quando allo Step 6 fetchVehicles() (dentro fleetService.ts)
+// chiamerà per davvero il Traccar Server, questo file non dovrà cambiare:
+// continuerà a ricevere semplicemente un array di oggetti Vehicle.
 import { useState } from 'react';
 
-import { mockVehicles } from '../../data/mockVehicles';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import { fetchVehicles } from '../../services/fleetService';
+import PlaceholderSection from '../../components/PlaceholderSection';
 import VehicleList from './VehicleList';
 import FleetMap from './FleetMap';
 
 export default function MapView() {
+  const { data: vehicles, isLoading, error } = useAsyncData(fetchVehicles);
+
   // "string | null" perché all'inizio nessun veicolo è selezionato.
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
+  // Stato 1 di 3: il caricamento è ancora in corso (i primi ~500ms, vedi
+  // fleetService.ts). Mostriamo un semplice messaggio invece della UI vuota.
+  if (isLoading) {
+    return (
+      <PlaceholderSection
+        title="Caricamento flotta…"
+        description="Recupero l'elenco veicoli e le posizioni più recenti."
+      />
+    );
+  }
+
+  // Stato 2 di 3: qualcosa è andato storto (o, per sicurezza, i dati sono
+  // comunque assenti). Con un vero server questo capiterà per davvero, es.
+  // rete assente o sessione scaduta.
+  if (error || !vehicles) {
+    return (
+      <PlaceholderSection
+        title="Impossibile caricare i veicoli"
+        description={error ?? 'Errore sconosciuto durante il caricamento.'}
+      />
+    );
+  }
+
+  // Stato 3 di 3: dati pronti — la UI di sempre.
   return (
     <div style={{ display: 'flex', gap: 16, height: '100%' }}>
       <VehicleList
-        vehicles={mockVehicles}
+        vehicles={vehicles}
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={setSelectedVehicleId}
       />
 
       <FleetMap
-        vehicles={mockVehicles}
+        vehicles={vehicles}
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={setSelectedVehicleId}
       />

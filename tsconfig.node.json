@@ -1,23 +1,27 @@
 {
+  /*
+    Configurazione TypeScript separata SOLO per vite.config.ts. Questo file
+    non viene eseguito nel browser insieme al resto dell'app, ma da Node
+    durante la fase di build/dev: per questo ha bisogno di regole diverse
+    (es. "composite" per essere referenziato dal tsconfig.json principale).
+  */
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
-    "target": "es2023",
-    "lib": ["ES2023"],
-    "types": ["node"],
+    "composite": true,
     "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
 
-    /* Bundler mode */
-    "module": "nodenext",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    /* "composite" obbliga TypeScript a scrivere dei file di output (non può
+       restare in modalità "solo controllo tipi" come il tsconfig.json
+       principale). Senza "outDir" questi file (vite.config.js compilato,
+       vite.config.d.ts, la cache .tsbuildinfo) verrebbero scritti nella
+       radice del progetto, accanto a vite.config.ts — rischiando che Vite
+       carichi per errore la versione compilata invece del file .ts che
+       modifichiamo noi! Redirigendoli dentro node_modules/ (già escluso da
+       Git e ricreato ad ogni "npm install") evitiamo il problema del tutto. */
+    "outDir": "node_modules/.tsc-node-out"
   },
   "include": ["vite.config.ts"]
 }
