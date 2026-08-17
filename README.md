@@ -1,17 +1,18 @@
-# FleetOps — applicazione (Step 6a: login reale su Traccar)
+# FleetOps — applicazione (Step 6b: dispositivi e posizioni reali)
 
 Applicazione web **React + Vite + TypeScript** che riproduce la struttura di
 navigazione e le schermate della PoC (`Fleet Dashboard PoC (standalone).html`),
 pensata per essere riempita ed espansa un pezzo alla volta finché non parlerà
 con un vero **Traccar Server**.
 
-> Stato attuale: **Step 6a completato** — l'app ora richiede davvero il login
-> con le credenziali del server Traccar (non più dati finti): chi non ha una
-> sessione valida viene reindirizzato a `/login`, e dopo l'accesso può uscire
-> con il pulsante "Esci" in alto a destra. Dispositivi/posizioni/eventi sono
-> ancora dati mock: arriveranno negli Step 6b/6c. Vedi "Come testare il login
-> reale" più sotto per collegarti al tuo server Traccar in locale, e
-> "Avanzamento del progetto" per il dettaglio passo-per-passo.
+> Stato attuale: **Step 6b completato** — la Mappa operativa ora mostra i
+> veicoli VERI del tuo server Traccar (`GET /api/devices` + `GET
+/api/positions`), non più dati finti. L'Anagrafica veicoli resta invece
+> ancora mock (richiede una decisione su come mappare i campi extra come VIN
+> e reparto sugli attributi personalizzati di Traccar — vedi "Cosa fa già e
+> cosa non fa ancora"). Vedi "Come testare lo Step 6b" più sotto per
+> collegarti al tuo server Traccar in locale, e "Avanzamento del progetto"
+> per il dettaglio passo-per-passo.
 
 ## Perché queste scelte tecniche
 
@@ -86,7 +87,9 @@ fleet-dashboard-app/
 │   │   └── VehicleCategoryIcon.tsx  icona lineare per categoria veicolo (leggero/pesante/speciale)
 │   ├── types/
 │   │   ├── vehicle.ts              tipo Vehicle (dati "live": posizione, stato, velocità)
-│   │   └── vehicleRegistry.ts      tipo VehicleRegistryEntry (estende Vehicle con dati di anagrafica)
+│   │   ├── vehicleRegistry.ts      tipo VehicleRegistryEntry (estende Vehicle con dati di anagrafica)
+│   │   ├── traccarDevice.ts        NUOVO (Step 6b): forma grezza di un Device Traccar (GET /api/devices)
+│   │   └── traccarPosition.ts      NUOVO (Step 6b): forma grezza di una Position Traccar (GET /api/positions)
 │   ├── common/                     "dizionari" tipizzati etichetta+colore per stato/categoria/telemetria
 │   │   ├── vehicleStatus.ts
 │   │   ├── vehicleCategory.ts
@@ -96,6 +99,8 @@ fleet-dashboard-app/
 │   │   └── mockFleetRegistry.ts
 │   ├── hooks/
 │   │   └── useAsyncData.ts        hook riusabile: gestisce caricamento/errore/dati di una Promise
+│   ├── utils/
+│   │   └── formatRelativeTime.ts  NUOVO (Step 6b): converte una data ISO in "N minuti fa" ecc.
 │   ├── pages/                 una cartella per ciascuna sezione della sidebar
 │   │   ├── Login/             NUOVO (Step 6a): schermata di accesso, fuori dal
 │   │   │                       guscio AppLayout (niente sidebar/topbar)
@@ -123,16 +128,17 @@ fleet-dashboard-app/
 │   │   │                             usato da Allarmi, Manutenzione, Report, Stato dispositivi
 │   │   └── VehicleCategoryIcon.tsx  icona lineare per categoria veicolo (leggero/pesante/speciale)
 │   └── services/
-│       ├── fleetService.ts   livello "servizi" usato DAVVERO dalle pagine (Step 4): oggi
-│       │                      avvolge i dati mock in una Promise con un piccolo ritardo;
-│       │                      allo Step 6b chiamerà qui sotto traccarApi per
-│       │                      dispositivi/posizioni. Dallo Step 5 espone anche le
-│       │                      funzioni per allarmi, manutenzione, attività, KPI e stato
-│       │                      dispositivi (ancora tutte mock)
+│       ├── fleetService.ts   livello "servizi" usato DAVVERO dalle pagine: dallo Step 6b
+│       │                      fetchVehicles() chiama DAVVERO traccarApi.getDevices() +
+│       │                      getPositions() e traduce il risultato in Vehicle[] tramite
+│       │                      il nuovo helper interno toVehicle(). Le altre funzioni
+│       │                      (allarmi, manutenzione, attività, KPI, stato dispositivi,
+│       │                      anagrafica) restano ancora mock
 │       └── traccarApi.ts     "ponte" verso Traccar: dallo Step 6a login()/getSession()/
 │                              logout() sono VERE chiamate di rete (POST/GET/DELETE
-│                              /api/session); getDevices()/getPositions()/getEvents()
-│                              restano stub in attesa degli Step 6b/6c
+│                              /api/session); dallo Step 6b anche getDevices()/
+│                              getPositions() sono VERE chiamate (GET /api/devices,
+│                              GET /api/positions); solo getEvents() resta stub (Step 6c)
 ```
 
 File aggiuntivi introdotti allo Step 6a:
@@ -208,6 +214,42 @@ Se il tuo server Traccar è su un indirizzo diverso da `localhost:8082`,
 modifica il valore `target` dentro `server.proxy['/api']` in
 `vite.config.ts` (vedi i commenti in quel file per i dettagli).
 
+### Come testare lo Step 6b (dati reali sulla Mappa operativa)
+
+1. Assicurati che Traccar sia in esecuzione (come sopra) e che il tuo
+   account abbia almeno un dispositivo configurato che abbia già inviato
+   almeno una posizione (un dispositivo mai connesso non comparirà sulla
+   Mappa — vedi limite più sotto).
+2. Avvia l'app (`npm run dev`) ed effettua il login come al solito.
+3. Vai su "Mappa operativa": dopo un breve "Caricamento flotta…" dovresti
+   vedere i TUOI veicoli reali (non più i 7 veicoli finti v1..v7), con:
+   - **Targa** = nome del dispositivo su Traccar (`device.name`).
+   - **Velocità** in km/h, convertita automaticamente dai nodi restituiti da
+     Traccar.
+   - **Stato**: "Offline" se il dispositivo non è online su Traccar,
+     "Allarme" se l'ultima posizione ha un allarme attivo, "In movimento" se
+     la velocità supera 3 km/h, altrimenti "Fermo". È una convenzione di
+     partenza: se sul tuo parco veicoli restituisce risultati poco sensati
+     (es. troppi falsi "in movimento"), è facile aggiustare le soglie in
+     `fleetService.ts` (funzione `toVehicle`).
+   - **Ultimo aggiornamento** in italiano ("12 secondi fa", "3 ore fa"...).
+4. Se un dispositivo del tuo account non compare in lista, controlla che
+   abbia già inviato almeno una posizione: i dispositivi senza nessuna
+   posizione nota vengono esclusi (non avremmo comunque coordinate da
+   mostrare sulla mappa).
+5. Il campo "Conducente" resta vuoto per tutti i veicoli reali: Traccar
+   gestisce i conducenti come risorsa separata (`/api/drivers`), non ancora
+   collegata.
+6. L'Anagrafica veicoli mostra ancora i 7 veicoli finti: non è stata
+   toccata in questo step (vedi "Cosa non fa ancora").
+
+> Nota per chi verifica dal thread di Perplexity Computer: l'ambiente
+> sandbox che genera l'anteprima online NON può raggiungere il tuo
+> `localhost:8082`, quindi la build pubblicata mostra solo la schermata di
+> login (o un errore di connessione) e non può essere usata per verificare
+> i dati reali. La verifica va fatta SEMPRE eseguendo l'app in locale con
+> `npm run dev` contro il tuo server Traccar.
+
 Prima di ogni commit/push conviene eseguire anche:
 
 ```bash
@@ -269,6 +311,24 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
   solo con una sessione valida; senza sessione si viene reindirizzati a
   `/login` automaticamente.
 
+**Novità Step 6b:**
+
+- **Mappa operativa con dati reali**: `fetchVehicles()` non restituisce più
+  i 7 veicoli finti, ma chiama davvero `GET /api/devices` e `GET
+/api/positions` (in parallelo) e unisce i due risultati in un array di
+  `Vehicle`.
+- **Conversione nodi → km/h**: Traccar restituisce la velocità in nodi;
+  viene moltiplicata per 1,852 per ottenere i km/h mostrati in UI.
+- **Stato dedotto automaticamente**: "Offline"/"Allarme"/"In
+  movimento"/"Fermo" sono calcolati da stato di connessione + eventuale
+  allarme + velocità (Traccar non ha un campo "stato" unico equivalente).
+  È un'euristica di partenza da validare sui tuoi dati reali (vedi "Come
+  testare lo Step 6b").
+- **"Ultimo aggiornamento" in italiano**: nuova utility
+  `formatRelativeTime.ts` che trasforma la data ISO di Traccar in frasi
+  come "12 secondi fa" / "3 ore fa", coerente con lo stile già usato nei
+  dati mock.
+
 **Non fa ancora (arriverà nei prossimi passi):**
 
 - La scheda di dettaglio veicolo non include ancora la "Cronologia eventi"
@@ -287,18 +347,36 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 - In Stato dispositivi la connettività è mostrata con un pallino colorato +
   testo, non con un badge pieno come altrove: scelta voluta per restare
   fedele alla PoC in quella sezione specifica.
-- Dispositivi, posizioni, allarmi ed eventi sono ANCORA dati mock:
-  `fleetService.ts` non chiama ancora `traccarApi.getDevices()` /
-  `getPositions()` / `getEvents()` (restano funzioni stub). Arriverà negli
-  Step 6b (dispositivi/posizioni) e 6c (eventi/WebSocket in tempo reale).
+- **Anagrafica veicoli resta mock**: `fetchFleetRegistry()` non è stata
+  toccata in questo step. La tabella "Registro flotta" ha bisogno di campi
+  che Traccar non espone come campi standard (VIN, reparto, alimentazione,
+  allestimento, anno di immatricolazione...): andrebbero letti dagli
+  `attributes` personalizzati del dispositivo su Traccar, il che richiede
+  prima di decidere insieme quali nomi di attributo usare (e configurarli
+  sul server). Ne parliamo appena avrai verificato lo Step 6b.
+- **Dispositivi senza posizione nota vengono esclusi** dalla Mappa
+  operativa: se un dispositivo Traccar non ha ancora mai inviato una
+  posizione, non compare in lista (non avremmo comunque coordinate da
+  mostrare).
+- **Il conducente (`driver`) è sempre vuoto** per i veicoli reali: Traccar
+  gestisce i conducenti come risorsa separata (`GET /api/drivers`), non
+  ancora collegata.
+- **Nessun "tipo di allarme" tradotto in italiano**: se `position.
+attributes.alarm` è presente, il veicolo passa a stato "Allarme", ma il
+  dettaglio del tipo di allarme non è ancora mostrato in UI.
+- Allarmi/manutenzione/attività/KPI/stato dispositivi sono ANCORA dati
+  mock: `fleetService.ts` non chiama ancora `traccarApi.getEvents()`
+  (rimane l'unica funzione stub). Arriverà allo Step 6c insieme al
+  WebSocket per gli aggiornamenti in tempo reale.
 - Il proxy `/api` di `vite.config.ts` funziona SOLO in sviluppo
   (`npm run dev`): una build pubblicata online (es. su pplx.app) non ha un
-  server Vite in ascolto, quindi il login reale funziona solo eseguendo
-  l'app in locale contro il proprio server Traccar. La versione pubblicata
-  nel thread resta quindi "di sola anteprima grafica" per questo Step.
+  server Vite in ascolto, quindi login e dati reali funzionano solo
+  eseguendo l'app in locale contro il proprio server Traccar. La versione
+  pubblicata nel thread resta quindi "di sola anteprima grafica" per questo
+  Step.
 - Nessun refresh automatico del token/sessione: se il cookie scade mentre
-  l'app è aperta, la prossima chiamata protetta fallirà (verrà gestito con
-  gli Step 6b/6c, quando ci saranno più chiamate da monitorare).
+  l'app è aperta, la prossima chiamata protetta fallirà (verrà gestito allo
+  Step 6c, quando ci saranno più chiamate da monitorare).
 
 ## Avanzamento del progetto
 
@@ -311,22 +389,22 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 | 4    | Modulo servizi API (mock → pronto per Traccar reale)                          | ✅ Completato |
 | 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi        | ✅ Completato |
 | 6a   | Login reale su Traccar (`POST/GET/DELETE /api/session`, rotte protette)       | ✅ Completato |
-| 6b   | Elenco dispositivi/posizioni reali (`GET /api/devices`, `GET /api/positions`) | ⏳ Da fare    |
+| 6b   | Elenco dispositivi/posizioni reali (`GET /api/devices`, `GET /api/positions`) | ✅ Completato |
 | 6c   | Aggiornamenti in tempo reale via WebSocket (`/api/socket`)                    | ⏳ Da fare    |
 
 ## Prossimi passi pianificati
 
-1. **Step 6b** — Elenco dispositivi/posizioni reali: `GET /api/devices` e
-   `GET /api/positions`, con `fleetService.ts` che chiama `traccarApi.ts` al
-   posto dei dati mock per Mappa operativa e Anagrafica veicoli (le altre
-   sezioni restano mock per ora). Le pagine non cambieranno struttura.
-2. **Step 6c** — Aggiornamenti in tempo reale via WebSocket (`/api/socket`),
+1. **Step 6c** — Aggiornamenti in tempo reale via WebSocket (`/api/socket`),
    seguendo lo schema della web app ufficiale (`SocketController.jsx` nel
    repo `traccar/traccar-web`): niente più "polling", i dati si aggiornano
-   da soli quando cambiano sul server.
+   da soli quando cambiano sul server. Includerà anche gli eventi/allarmi
+   reali (`traccarApi.getEvents()`, ultimo stub rimasto).
+2. Decidere insieme la convenzione per gli attributi personalizzati Traccar
+   necessari a collegare l'Anagrafica veicoli ai dati reali (VIN, reparto,
+   alimentazione, allestimento, anno di immatricolazione...).
 3. Valutare l'introduzione di uno stato globale condiviso più ampio (Redux
    Toolkit) se, con dispositivi/posizioni live, il semplice Context iniziato
    allo Step 6a risultasse limitante.
-4. Valutare come gestire il login reale anche sulla build pubblicata online
-   (reverse proxy dedicato o configurazione CORS lato Traccar), oggi
-   possibile solo eseguendo l'app in locale.
+4. Valutare come gestire il login e i dati reali anche sulla build
+   pubblicata online (reverse proxy dedicato o configurazione CORS lato
+   Traccar), oggi possibile solo eseguendo l'app in locale.

@@ -2,11 +2,14 @@
 // traccarApi.ts — il "ponte" verso il vero Traccar Server.
 // ─────────────────────────────────────────────────────────────────────────
 import type { TraccarUser } from '../types/traccarUser';
+import type { TraccarDeviceRaw } from '../types/traccarDevice';
+import type { TraccarPositionRaw } from '../types/traccarPosition';
 
 // Questo file è UN SOLO punto del progetto in cui vive tutto il codice che
 // parla con Traccar via rete. Dallo Step 6a le funzioni di login/sessione
-// sono collegate DAVVERO al server (vedi più sotto); dispositivi, posizioni
-// ed eventi restano invece ancora "stub" in attesa degli Step 6b/6c.
+// sono collegate DAVVERO al server; dallo Step 6b anche dispositivi e
+// posizioni sono chiamate reali. Solo gli eventi (Step 6c) restano ancora
+// "stub".
 // Vantaggi di isolare questa logica qui invece che dentro ai componenti
 // delle pagine:
 //   - Se Traccar cambia un endpoint, si corregge in un posto solo.
@@ -28,43 +31,43 @@ import type { TraccarUser } from '../types/traccarUser';
 //      successive dal browser lo includono automaticamente (fetch con
 //      { credentials: 'include' }).
 //
-//   2. Elenco veicoli/dispositivi:
+//   2. Elenco veicoli/dispositivi (REALE dallo Step 6b):
 //        GET /api/devices
 //      Restituisce un array di oggetti Device: { id, name, uniqueId,
-//      status, lastUpdate, category, attributes: {...}, ... }.
-//      Corrisponde alla nostra pagina "Anagrafica veicoli" / "Stato dispositivi".
+//      status, lastUpdate, category, attributes: {...}, ... }. Vedi la
+//      forma completa in src/types/traccarDevice.ts.
 //
-//   3. Ultima posizione nota di ogni dispositivo:
+//   3. Ultima posizione nota di ogni dispositivo (REALE dallo Step 6b):
 //        GET /api/positions
 //      Restituisce un array di Position: { deviceId, latitude, longitude,
-//      speed, course, fixTime, attributes: { ignition, ... }, ... }.
-//      Corrisponde alla "Mappa operativa": in questo Step 2 usiamo ancora
-//      mockVehicles.ts, ma quando questo servizio sarà collegato per davvero,
-//      il suo risultato dovrà poter essere "tradotto" in un array di Vehicle
-//      (il tipo definito in src/types/vehicle.ts).
+//      speed (in NODI, non km/h!), course, fixTime, attributes: {...}, ... }.
+//      Vedi la forma completa in src/types/traccarPosition.ts. La
+//      "traduzione" di Device+Position nel nostro tipo Vehicle (usato dalla
+//      Mappa operativa) avviene in src/services/fleetService.ts, non qui:
+//      questo file resta un semplice "ponte" verso Traccar, senza sapere
+//      nulla della forma dei dati che usa la nostra UI.
 //
-//   4. Eventi/allarmi:
+//   4. Eventi/allarmi (ancora NON collegato, arriverà allo Step 6c):
 //        GET /api/events?deviceId=...&from=...&to=...
 //      Corrisponde alla pagina "Allarmi e regole".
 //
-//   5. Aggiornamenti in tempo reale:
+//   5. Aggiornamenti in tempo reale (ancora NON collegato, Step 6c):
 //        WebSocket su  wss://<server>/api/socket
 //      Il server invia via socket gli stessi oggetti Device/Position/Event
 //      non appena cambiano, evitando di dover fare "polling" (richieste
 //      ripetute) per sapere se qualcosa è cambiato. È quello che la web app
 //      ufficiale gestisce nel file "src/SocketController.jsx".
 //
-// Per le funzioni non ancora collegate (dispositivi, posizioni, eventi)
-// esponiamo solo la "forma" (le firme, con i loro tipi di ingresso/uscita)
-// con un corpo che genera un errore esplicito: così se qualcuno le richiama
-// per sbaglio prima del tempo, il messaggio in console lo dice chiaramente
-// invece di fallire in modo silenzioso o confuso. Arriveranno negli Step
-// 6b (dispositivi/posizioni) e 6c (eventi/WebSocket).
+// getEvents() (Step 6c, sotto) è l'unica funzione rimasta "stub": esponiamo
+// solo la sua firma (tipi di ingresso/uscita) con un corpo che genera un
+// errore esplicito, così se qualcuno la richiama per sbaglio prima del
+// tempo il messaggio in console lo dice chiaramente invece di fallire in
+// modo silenzioso o confuso.
 
 function notImplemented(nomeFunzione: string): never {
   throw new Error(
     `traccarApi.${nomeFunzione}(): non ancora collegato a un vero server Traccar. ` +
-      'Per ora le pagine usano dati mock da src/data/mockVehicles.ts.',
+      'Questa funzionalità arriverà in un prossimo step.',
   );
 }
 
@@ -183,14 +186,61 @@ export async function logout(): Promise<void> {
   // schermata di login (il cookie, nel dubbio, viene comunque scartato).
 }
 
-/** Recupera l'elenco dei dispositivi/veicoli (GET /api/devices). */
-export async function getDevices(): Promise<never> {
-  return notImplemented('getDevices');
+// ─────────────────────────────────────────────────────────────────────────
+// Step 6b — Dispositivi e posizioni reali.
+// ─────────────────────────────────────────────────────────────────────────
+const DEVICES_URL = '/api/devices';
+const POSITIONS_URL = '/api/positions';
+
+/**
+ * Recupera l'elenco dei dispositivi/veicoli.
+ *   GET /api/devices
+ *
+ * Restituisce SOLO i dispositivi dell'utente che ha fatto login (Traccar
+ * filtra automaticamente in base al cookie di sessione, non serve alcun
+ * parametro). Nota che questa è la forma "grezza" di Traccar
+ * (TraccarDeviceRaw), non ancora il nostro tipo Vehicle: la traduzione
+ * avviene in src/services/fleetService.ts.
+ */
+export async function getDevices(): Promise<TraccarDeviceRaw[]> {
+  const response = await fetch(DEVICES_URL, {
+    credentials: 'include',
+    // Chiediamo esplicitamente JSON: senza questo header, in alcuni casi
+    // (es. richiesta fatta digitando l'URL a mano nel browser) Traccar
+    // potrebbe rispondere con un formato diverso (es. CSV).
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Il server Traccar ha risposto con un errore (HTTP ${response.status}) ` +
+        'durante il recupero dei dispositivi.',
+    );
+  }
+
+  return (await response.json()) as TraccarDeviceRaw[];
 }
 
-/** Recupera le posizioni correnti di tutti i dispositivi (GET /api/positions). */
-export async function getPositions(): Promise<never> {
-  return notImplemented('getPositions');
+/**
+ * Recupera l'ULTIMA posizione nota di ogni dispositivo (senza parametri,
+ * Traccar restituisce solo l'ultima posizione per dispositivo, non la
+ * cronologia: è esattamente quello che serve alla Mappa operativa).
+ *   GET /api/positions
+ */
+export async function getPositions(): Promise<TraccarPositionRaw[]> {
+  const response = await fetch(POSITIONS_URL, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Il server Traccar ha risposto con un errore (HTTP ${response.status}) ` +
+        'durante il recupero delle posizioni.',
+    );
+  }
+
+  return (await response.json()) as TraccarPositionRaw[];
 }
 
 /** Recupera gli eventi/allarmi in un intervallo di tempo (GET /api/events). */

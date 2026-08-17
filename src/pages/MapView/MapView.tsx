@@ -6,13 +6,14 @@
 // entrambi, così quando si clicca un veicolo (in lista o sulla mappa)
 // entrambi i componenti si aggiornano restando sincronizzati.
 //
-// Novità dello Step 4: i veicoli non arrivano più da un import diretto di
-// mockVehicles, ma da "useAsyncData(fetchVehicles)" — lo stesso hook
+// I veicoli arrivano da "useAsyncData(fetchVehicles)" — lo stesso hook
 // riutilizzabile usato anche da VehicleRegistry.tsx. Finché i dati non sono
 // arrivati mostriamo un caricamento; se qualcosa va storto, un messaggio di
-// errore. Quando allo Step 6 fetchVehicles() (dentro fleetService.ts)
-// chiamerà per davvero il Traccar Server, questo file non dovrà cambiare:
-// continuerà a ricevere semplicemente un array di oggetti Vehicle.
+// errore. Dallo Step 6b fetchVehicles() (dentro fleetService.ts) chiama
+// per davvero il Traccar Server (GET /api/devices + GET /api/positions):
+// questo file non è dovuto cambiare, perché continua a ricevere
+// semplicemente un array di oggetti Vehicle, indipendentemente da dove
+// arrivano i dati.
 import { useState } from 'react';
 
 import { useAsyncData } from '../../hooks/useAsyncData';
