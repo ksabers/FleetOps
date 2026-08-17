@@ -29,6 +29,14 @@
   --color-status-alarm: #dc2626; /* Allarme / critico */
   --color-status-warning: #ea580c; /* Attenzione / in scadenza */
 
+  /* Versioni "tenui" degli stessi colori di stato, usate come sfondo dei
+     badge/chip (es. "Nuovo", "Scaduta") invece del colore pieno — introdotte
+     allo Step 5 per Allarmi, Manutenzione, Attività e Stato dispositivi. */
+  --color-status-moving-bg: #dcfce7;
+  --color-status-alarm-bg: #fee2e2;
+  --color-status-warning-bg: #ffedd5;
+  --color-status-info-bg: #dbeafe;
+
   /* Spaziature e dimensioni riutilizzate nel layout */
   --sidebar-width: 240px;
   --topbar-height: 64px;

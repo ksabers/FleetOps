@@ -23,8 +23,18 @@
 
 import type { Vehicle } from '../types/vehicle';
 import type { VehicleRegistryEntry } from '../types/vehicleRegistry';
+import type { Alarm } from '../types/alarm';
+import type { MaintenanceItem } from '../types/maintenanceItem';
+import type { ActivityEntry } from '../types/activityEntry';
+import type { DeviceStatusEntry } from '../types/deviceStatus';
+import type { KpiOverview } from '../types/kpi';
 import { mockVehicles } from '../data/mockVehicles';
 import { mockFleetRegistry } from '../data/mockFleetRegistry';
+import { mockAlarms } from '../data/mockAlarms';
+import { mockMaintenance } from '../data/mockMaintenance';
+import { mockActivity } from '../data/mockActivity';
+import { mockDevices } from '../data/mockDevices';
+import { mockKpiOverview } from '../data/mockKpi';
 
 /**
  * Piccola utility che "aspetta" un tot di millisecondi prima di risolversi.
@@ -61,4 +71,46 @@ export async function fetchVehicles(): Promise<Vehicle[]> {
 export async function fetchFleetRegistry(): Promise<VehicleRegistryEntry[]> {
   await simulateNetworkDelay();
   return mockFleetRegistry;
+}
+
+// ── Le 5 funzioni seguenti sono nuove dello Step 5: stessa forma delle due
+// sopra (aspetta un attimo, poi restituisce l'array/oggetto mock), una per
+// ciascuna delle nuove pagine. ────────────────────────────────────────────
+
+/** Recupera l'elenco degli allarmi — usato dalla pagina "Allarmi". */
+export async function fetchAlarms(): Promise<Alarm[]> {
+  await simulateNetworkDelay();
+  return mockAlarms;
+}
+
+/**
+ * Recupera le scadenze di manutenzione — usato dalla pagina "Manutenzione".
+ */
+export async function fetchMaintenanceItems(): Promise<MaintenanceItem[]> {
+  await simulateNetworkDelay();
+  return mockMaintenance;
+}
+
+/** Recupera la cronologia interventi — usato dalla pagina "Attività". */
+export async function fetchActivityLog(): Promise<ActivityEntry[]> {
+  await simulateNetworkDelay();
+  return mockActivity;
+}
+
+/**
+ * Recupera lo stato dei dispositivi GPS installati — usato dalla pagina
+ * "Stato dispositivi".
+ */
+export async function fetchDeviceStatuses(): Promise<DeviceStatusEntry[]> {
+  await simulateNetworkDelay();
+  return mockDevices;
+}
+
+/**
+ * Recupera in un'unica chiamata tutto ciò che serve alla pagina "Report"
+ * (card di riepilogo + dati dei due grafici) — usato dalla pagina "Report".
+ */
+export async function fetchKpiOverview(): Promise<KpiOverview> {
+  await simulateNetworkDelay();
+  return mockKpiOverview;
 }
