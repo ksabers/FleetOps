@@ -1,16 +1,17 @@
-# FleetOps — applicazione (Step 5: tutte le sezioni con dati mock)
+# FleetOps — applicazione (Step 6a: login reale su Traccar)
 
 Applicazione web **React + Vite + TypeScript** che riproduce la struttura di
 navigazione e le schermate della PoC (`Fleet Dashboard PoC (standalone).html`),
 pensata per essere riempita ed espansa un pezzo alla volta finché non parlerà
 con un vero **Traccar Server**.
 
-> Stato attuale: **Step 5 completato** — tutte e 7 le sezioni della sidebar
-> sono ora vive e mostrano contenuti reali (ancora con dati finti/mock, ma
-> caricati in modo asincrono come farebbe un vero server): Mappa operativa,
-> Anagrafica veicoli, Allarmi e regole, Manutenzione, Attività, KPI e report,
-> Stato dispositivi. Nessun segnaposto rimasto. Vedi "Avanzamento del
-> progetto" più sotto per il dettaglio passo-per-passo.
+> Stato attuale: **Step 6a completato** — l'app ora richiede davvero il login
+> con le credenziali del server Traccar (non più dati finti): chi non ha una
+> sessione valida viene reindirizzato a `/login`, e dopo l'accesso può uscire
+> con il pulsante "Esci" in alto a destra. Dispositivi/posizioni/eventi sono
+> ancora dati mock: arriveranno negli Step 6b/6c. Vedi "Come testare il login
+> reale" più sotto per collegarti al tuo server Traccar in locale, e
+> "Avanzamento del progetto" per il dettaglio passo-per-passo.
 
 ## Perché queste scelte tecniche
 
@@ -42,6 +43,18 @@ con un vero **Traccar Server**.
   dove la risposta non arriva mai istantaneamente.
 - **ESLint 9 (flat config) + Prettier**: verifica automatica di stile e
   qualità del codice, eseguita prima di ogni build/deploy.
+- **Context API di React per l'autenticazione (Step 6a)**, non ancora Redux:
+  `AuthContext` è il primo "stato condiviso" tra più componenti dell'app
+  (TopBar, RequireAuth, tutte le pagine). È la versione "semplice, già
+  incorporata in React" dello stesso concetto che traccar-web risolve con
+  Redux; potremo valutare Redux Toolkit più avanti se lo stato condiviso
+  crescerà molto (dispositivi, posizioni live...).
+- **Proxy di sviluppo di Vite verso Traccar (Step 6a)**: `vite.config.ts`
+  ora instrada ogni richiesta a `/api/...` verso il vero server Traccar
+  (`http://localhost:8082` di default), così il browser non incontra mai
+  problemi di CORS. Funziona SOLO in `npm run dev`; una build pubblicata
+  (Step futuro) richiederà una soluzione diversa — vedi "Cosa fa già e cosa
+  non fa ancora" più sotto.
 
 ## Struttura delle cartelle
 
@@ -56,10 +69,16 @@ fleet-dashboard-app/
 │   ├── main.tsx             monta l'app React nel DOM
 │   ├── App.tsx              definisce le rotte (URL -> pagina)
 │   ├── index.css            variabili CSS globali (colori, spaziature, utility .badge/.mono)
+│   ├── context/
+│   │   └── AuthContext.tsx  NUOVO (Step 6a): stato globale di autenticazione
+│   │                         (utente collegato, login/logout, controllo
+│   │                         sessione all'avvio) tramite React Context
 │   ├── layout/
 │   │   ├── AppLayout.tsx    guscio comune: Sidebar + TopBar + contenuto pagina
 │   │   ├── Sidebar.tsx      menu laterale scuro (Monitoraggio / Gestione)
-│   │   ├── TopBar.tsx       intestazione (titolo, ricerca, orologio)
+│   │   ├── TopBar.tsx       intestazione (titolo, ricerca, orologio, utente+Esci)
+│   │   ├── RequireAuth.tsx  NUOVO (Step 6a): guardia di rotta, reindirizza a
+│   │   │                     /login se nessuno ha effettuato l'accesso
 │   │   ├── navConfig.ts     dati delle voci di menu della sidebar
 │   │   └── pageMeta.ts      titolo/sottotitolo per ogni pagina
 │   ├── components/
@@ -78,6 +97,9 @@ fleet-dashboard-app/
 │   ├── hooks/
 │   │   └── useAsyncData.ts        hook riusabile: gestisce caricamento/errore/dati di una Promise
 │   ├── pages/                 una cartella per ciascuna sezione della sidebar
+│   │   ├── Login/             NUOVO (Step 6a): schermata di accesso, fuori dal
+│   │   │                       guscio AppLayout (niente sidebar/topbar)
+│   │   │   └── Login.tsx
 │   │   ├── MapView/           Mappa operativa — COMPLETA (Step 2)
 │   │   ├── VehicleRegistry/   Anagrafica veicoli — COMPLETA (Step 3)
 │   │   ├── Alarms/            Allarmi e regole — COMPLETA (Step 5)
@@ -103,12 +125,22 @@ fleet-dashboard-app/
 │   └── services/
 │       ├── fleetService.ts   livello "servizi" usato DAVVERO dalle pagine (Step 4): oggi
 │       │                      avvolge i dati mock in una Promise con un piccolo ritardo;
-│       │                      allo Step 6 chiamerà qui sotto traccarApi. Dallo Step 5 espone
-│       │                      anche le funzioni per allarmi, manutenzione, attività, KPI e
-│       │                      stato dispositivi
-│       └── traccarApi.ts     "ponte" verso Traccar (per ora solo funzioni stub che lanciano
-│                              un errore "non implementato"; richiamato da fleetService.ts
-│                              a partire dallo Step 6, non ancora dalle pagine)
+│       │                      allo Step 6b chiamerà qui sotto traccarApi per
+│       │                      dispositivi/posizioni. Dallo Step 5 espone anche le
+│       │                      funzioni per allarmi, manutenzione, attività, KPI e stato
+│       │                      dispositivi (ancora tutte mock)
+│       └── traccarApi.ts     "ponte" verso Traccar: dallo Step 6a login()/getSession()/
+│                              logout() sono VERE chiamate di rete (POST/GET/DELETE
+│                              /api/session); getDevices()/getPositions()/getEvents()
+│                              restano stub in attesa degli Step 6b/6c
+```
+
+File aggiuntivi introdotti allo Step 6a:
+
+```
+src/types/
+└── traccarUser.ts   interfaccia TraccarUser (id, name, email, administrator):
+                      versione "ridotta" dell'oggetto User che restituisce Traccar
 ```
 
 File aggiuntivi introdotti allo Step 5 (dati mock e stili, uno per sezione,
@@ -153,6 +185,28 @@ npm run dev      # avvia il server di sviluppo su http://localhost:5173
 
 Ogni modifica ai file dentro `src/` viene mostrata quasi istantaneamente nel
 browser, senza bisogno di ricaricare la pagina a mano.
+
+### Come testare il login reale (Step 6a)
+
+Dallo Step 6a l'app richiede DAVVERO una sessione Traccar valida:
+
+1. Assicurati che Traccar sia in esecuzione e raggiungibile su
+   `http://localhost:8082` (la pagina di login di Traccar deve essere
+   visibile andando lì con il browser).
+2. Avvia l'app con `npm run dev` come sopra e apri `http://localhost:5173`.
+3. Verrai reindirizzato automaticamente a `/login`: inserisci email e
+   password del tuo account Traccar (lo stesso che usi sulla pagina di
+   login del server) e premi "Accedi".
+4. Se le credenziali sono corrette, Traccar imposta un cookie di sessione e
+   vieni portato alla Mappa operativa; il tuo nome appare in alto a destra
+   con il pulsante "Esci".
+5. Se il server Traccar NON è in ascolto su `localhost:8082`, o le
+   credenziali sono sbagliate, viene mostrato un messaggio d'errore sotto ai
+   campi del form, senza far "sparire" i dati digitati.
+
+Se il tuo server Traccar è su un indirizzo diverso da `localhost:8082`,
+modifica il valore `target` dentro `server.proxy['/api']` in
+`vite.config.ts` (vedi i commenti in quel file per i dettagli).
 
 Prima di ogni commit/push conviene eseguire anche:
 
@@ -200,6 +254,21 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
   connettività (verde/arancio/grigio) e dettaglio tecnico (SIM, protocollo
   dati, firmware, tensione di alimentazione, ecc.).
 
+**Novità Step 6a:**
+
+- **Login reale**: la app chiede email e password del server Traccar
+  (`POST /api/session`) invece di entrare direttamente. In caso di
+  credenziali errate o server non raggiungibile mostra un messaggio
+  d'errore chiaro, mantenendo i valori digitati.
+- **Sessione persistente tra ricariche**: al caricamento dell'app viene
+  controllato se esiste già un cookie di sessione valido (`GET /api/session`);
+  se sì, l'utente entra direttamente senza dover rifare il login.
+- **Logout**: pulsante "Esci" in alto a destra nella TopBar (chiama
+  `DELETE /api/session` e torna alla schermata di login).
+- **Rotte protette**: tutte le 7 sezioni della sidebar sono ora raggiungibili
+  solo con una sessione valida; senza sessione si viene reindirizzati a
+  `/login` automaticamente.
+
 **Non fa ancora (arriverà nei prossimi passi):**
 
 - La scheda di dettaglio veicolo non include ancora la "Cronologia eventi"
@@ -218,31 +287,46 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 - In Stato dispositivi la connettività è mostrata con un pallino colorato +
   testo, non con un badge pieno come altrove: scelta voluta per restare
   fedele alla PoC in quella sezione specifica.
-- Nessuna connessione a un Traccar Server reale: `src/services/traccarApi.ts`
-  esiste solo come documentazione (funzioni stub) di cosa dovrà fare;
-  `fleetService.ts` lo richiamerà al posto dei dati mock a partire dallo
-  Step 6.
+- Dispositivi, posizioni, allarmi ed eventi sono ANCORA dati mock:
+  `fleetService.ts` non chiama ancora `traccarApi.getDevices()` /
+  `getPositions()` / `getEvents()` (restano funzioni stub). Arriverà negli
+  Step 6b (dispositivi/posizioni) e 6c (eventi/WebSocket in tempo reale).
+- Il proxy `/api` di `vite.config.ts` funziona SOLO in sviluppo
+  (`npm run dev`): una build pubblicata online (es. su pplx.app) non ha un
+  server Vite in ascolto, quindi il login reale funziona solo eseguendo
+  l'app in locale contro il proprio server Traccar. La versione pubblicata
+  nel thread resta quindi "di sola anteprima grafica" per questo Step.
+- Nessun refresh automatico del token/sessione: se il cookie scade mentre
+  l'app è aperta, la prossima chiamata protetta fallirà (verrà gestito con
+  gli Step 6b/6c, quando ci saranno più chiamate da monitorare).
 
 ## Avanzamento del progetto
 
-| Step | Contenuto                                                               | Stato         |
-| ---- | ----------------------------------------------------------------------- | ------------- |
-| 1    | Scheletro app React/Vite: layout, sidebar, routing, 7 pagine segnaposto | ✅ Completato |
-| —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)           | ✅ Completato |
-| 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker          | ✅ Completato |
-| 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio     | ✅ Completato |
-| 4    | Modulo servizi API (mock → pronto per Traccar reale)                    | ✅ Completato |
-| 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi  | ✅ Completato |
-| 6    | Collegamento reale a Traccar Server (login, `/api/devices`, WebSocket)  | ⏳ Da fare    |
+| Step | Contenuto                                                                     | Stato         |
+| ---- | ----------------------------------------------------------------------------- | ------------- |
+| 1    | Scheletro app React/Vite: layout, sidebar, routing, 7 pagine segnaposto       | ✅ Completato |
+| —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)                 | ✅ Completato |
+| 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker                | ✅ Completato |
+| 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio           | ✅ Completato |
+| 4    | Modulo servizi API (mock → pronto per Traccar reale)                          | ✅ Completato |
+| 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi        | ✅ Completato |
+| 6a   | Login reale su Traccar (`POST/GET/DELETE /api/session`, rotte protette)       | ✅ Completato |
+| 6b   | Elenco dispositivi/posizioni reali (`GET /api/devices`, `GET /api/positions`) | ⏳ Da fare    |
+| 6c   | Aggiornamenti in tempo reale via WebSocket (`/api/socket`)                    | ⏳ Da fare    |
 
 ## Prossimi passi pianificati
 
-1. Collegamento vero a Traccar Server: login, `GET /api/devices`,
-   `GET /api/positions`, WebSocket per gli aggiornamenti live — seguendo lo
-   stesso schema della web app ufficiale (`SocketController.jsx`,
-   `store/session.js`, `store/devices.js` nel repo `traccar/traccar-web`).
-   A quel punto basterà modificare `fleetService.ts` per chiamare
-   `traccarApi.ts` al posto dei dati mock: le pagine non cambieranno.
-2. Valutare l'introduzione di uno stato globale condiviso (Context o Redux
-   Toolkit) per collegare davvero le pagine tra loro (es. un'azione su un
-   allarme che genera automaticamente una voce in Attività).
+1. **Step 6b** — Elenco dispositivi/posizioni reali: `GET /api/devices` e
+   `GET /api/positions`, con `fleetService.ts` che chiama `traccarApi.ts` al
+   posto dei dati mock per Mappa operativa e Anagrafica veicoli (le altre
+   sezioni restano mock per ora). Le pagine non cambieranno struttura.
+2. **Step 6c** — Aggiornamenti in tempo reale via WebSocket (`/api/socket`),
+   seguendo lo schema della web app ufficiale (`SocketController.jsx` nel
+   repo `traccar/traccar-web`): niente più "polling", i dati si aggiornano
+   da soli quando cambiano sul server.
+3. Valutare l'introduzione di uno stato globale condiviso più ampio (Redux
+   Toolkit) se, con dispositivi/posizioni live, il semplice Context iniziato
+   allo Step 6a risultasse limitante.
+4. Valutare come gestire il login reale anche sulla build pubblicata online
+   (reverse proxy dedicato o configurazione CORS lato Traccar), oggi
+   possibile solo eseguendo l'app in locale.

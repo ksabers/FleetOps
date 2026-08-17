@@ -18,6 +18,8 @@
 
 import { useEffect, useState } from 'react';
 
+import { useAuth } from '../context/AuthContext';
+
 // title e subtitle sono le "props": i valori che il componente padre (in
 // questo caso AppLayout) passa a TopBar per personalizzarne il contenuto,
 // così ogni pagina può mostrare un titolo diverso riusando lo stesso TopBar.
@@ -29,6 +31,12 @@ interface TopBarProps {
 }
 
 export default function TopBar({ title, subtitle }: TopBarProps) {
+  // Leggiamo dal contesto globale l'utente collegato e la funzione di
+  // logout. Non serve passarli come props da AppLayout: qualsiasi
+  // componente dentro <AuthProvider> (impostato in App.tsx) può chiamare
+  // useAuth() direttamente, da qualunque punto dell'albero dei componenti.
+  const { user, logout } = useAuth();
+
   // Stato locale: l'orario corrente. Lo inizializziamo con "adesso".
   const [now, setNow] = useState(new Date());
 
@@ -88,6 +96,40 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
       <span style={{ fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>
         {timeLabel}
       </span>
+
+      {/* Utente collegato + pulsante di logout. "user" non può essere null
+          qui in pratica (TopBar viene mostrato solo dentro RequireAuth,
+          dopo il login), ma controlliamo comunque con "user &&" per far
+          contento TypeScript e restare robusti se in futuro TopBar venisse
+          riusato in un punto non protetto. */}
+      {user && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+            {user.name}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              // logout() chiama DELETE /api/session e poi azzera lo stato
+              // globale (user -> null): RequireAuth se ne accorge da solo
+              // al render successivo e reindirizza a /login, senza bisogno
+              // di navigare manualmente da qui.
+              void logout();
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            Esci
+          </button>
+        </div>
+      )}
     </header>
   );
 }
