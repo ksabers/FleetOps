@@ -4,12 +4,15 @@
 import type { TraccarUser } from '../types/traccarUser';
 import type { TraccarDeviceRaw } from '../types/traccarDevice';
 import type { TraccarPositionRaw } from '../types/traccarPosition';
+import type { TraccarEventRaw } from '../types/traccarEvent';
 
 // Questo file è UN SOLO punto del progetto in cui vive tutto il codice che
 // parla con Traccar via rete. Dallo Step 6a le funzioni di login/sessione
 // sono collegate DAVVERO al server; dallo Step 6b anche dispositivi e
-// posizioni sono chiamate reali. Solo gli eventi (Step 6c) restano ancora
-// "stub".
+// posizioni sono chiamate reali; dallo Step 6c anche gli eventi (storico
+// via REST) e gli aggiornamenti in tempo reale (WebSocket, vedi
+// src/hooks/useLiveVehicles.ts) sono collegati DAVVERO — nessuna funzione
+// di questo file resta più uno "stub".
 // Vantaggi di isolare questa logica qui invece che dentro ai componenti
 // delle pagine:
 //   - Se Traccar cambia un endpoint, si corregge in un posto solo.
@@ -47,29 +50,27 @@ import type { TraccarPositionRaw } from '../types/traccarPosition';
 //      questo file resta un semplice "ponte" verso Traccar, senza sapere
 //      nulla della forma dei dati che usa la nostra UI.
 //
-//   4. Eventi/allarmi (ancora NON collegato, arriverà allo Step 6c):
-//        GET /api/events?deviceId=...&from=...&to=...
-//      Corrisponde alla pagina "Allarmi e regole".
+//   4. Storico eventi/allarmi (REALE dallo Step 6c):
+//        GET /api/reports/events?deviceId=...&from=...&to=...
+//      Attenzione: NON è "/api/events" (quel percorso restituisce un
+//      singolo evento dato il suo id, GET /api/events/{id} — utile solo se
+//      si conosce già l'id esatto). Per un INTERVALLO di tempo, come serve
+//      alla pagina "Allarmi e regole", l'endpoint giusto è quello sotto
+//      "/api/reports/*" insieme agli altri report (rotte, riepiloghi...).
+//      Richiede SEMPRE almeno un deviceId o un groupId, oltre a from/to in
+//      formato ISO 8601.
 //
-//   5. Aggiornamenti in tempo reale (ancora NON collegato, Step 6c):
+//   5. Aggiornamenti in tempo reale (REALE dallo Step 6c):
 //        WebSocket su  wss://<server>/api/socket
 //      Il server invia via socket gli stessi oggetti Device/Position/Event
 //      non appena cambiano, evitando di dover fare "polling" (richieste
 //      ripetute) per sapere se qualcosa è cambiato. È quello che la web app
-//      ufficiale gestisce nel file "src/SocketController.jsx".
-//
-// getEvents() (Step 6c, sotto) è l'unica funzione rimasta "stub": esponiamo
-// solo la sua firma (tipi di ingresso/uscita) con un corpo che genera un
-// errore esplicito, così se qualcuno la richiama per sbaglio prima del
-// tempo il messaggio in console lo dice chiaramente invece di fallire in
-// modo silenzioso o confuso.
-
-function notImplemented(nomeFunzione: string): never {
-  throw new Error(
-    `traccarApi.${nomeFunzione}(): non ancora collegato a un vero server Traccar. ` +
-      'Questa funzionalità arriverà in un prossimo step.',
-  );
-}
+//      ufficiale gestisce nel file "src/SocketController.jsx"; la nostra
+//      versione (più semplice, senza Redux) vive in
+//      src/hooks/useLiveVehicles.ts e non in questo file, perché quel
+//      codice deve anche sapere come "unire" i messaggi ricevuti con lo
+//      stato già presente nella pagina — cosa che un semplice "ponte" REST
+//      come questo file non fa per nessun'altra funzione.
 
 // ─────────────────────────────────────────────────────────────────────────
 // Step 6a — Autenticazione reale.
@@ -243,7 +244,71 @@ export async function getPositions(): Promise<TraccarPositionRaw[]> {
   return (await response.json()) as TraccarPositionRaw[];
 }
 
-/** Recupera gli eventi/allarmi in un intervallo di tempo (GET /api/events). */
-export async function getEvents(_from: Date, _to: Date): Promise<never> {
-  return notImplemented('getEvents');
+// ─────────────────────────────────────────────────────────────────────────
+// Step 6c — Storico eventi/allarmi.
+// ─────────────────────────────────────────────────────────────────────────
+const REPORTS_EVENTS_URL = '/api/reports/events';
+
+/**
+ * Recupera lo storico eventi (allarmi, ingressi/uscite da geofence, ecc.)
+ * di uno o più dispositivi in un intervallo di tempo.
+ *   GET /api/reports/events?deviceId=...&from=...&to=...
+ *
+ * Traccar richiede OBBLIGATORIAMENTE almeno un deviceId (o un groupId, che
+ * qui non usiamo): per questo il parametro non è opzionale, a differenza
+ * di getDevices()/getPositions() che non ne hanno bisogno (filtrano già
+ * in automatico in base alla sessione). Se la flotta ha più dispositivi e
+ * servono gli eventi di tutti, chi chiama questa funzione passa l'intero
+ * array di id (es. quelli restituiti da getDevices()).
+ *
+ * NOTA: questa funzione è pronta ma ancora NON collegata a nessuna pagina
+ * — la pagina "Allarmi e regole" (src/pages/Alarms) mostra ancora dati
+ * mock. Collegarla richiede prima di decidere come tradurre un evento
+ * Traccar (deviceId + type + attributes) nel nostro tipo Alarm (che si
+ * aspetta già una targa/veicolo leggibile, non un id numerico): lo
+ * affronteremo in un prossimo step dedicato, per non appesantire questo.
+ *
+ * @param deviceIds Elenco degli id dei dispositivi di cui vogliamo lo
+ *   storico (almeno uno).
+ * @param from Inizio dell'intervallo di tempo.
+ * @param to Fine dell'intervallo di tempo.
+ */
+export async function getEvents(
+  deviceIds: number[],
+  from: Date,
+  to: Date,
+): Promise<TraccarEventRaw[]> {
+  if (deviceIds.length === 0) {
+    // Fallire qui, in modo esplicito e comprensibile, è preferibile a
+    // lasciare che sia Traccar a rispondere con un generico HTTP 400: chi
+    // ha scritto il codice che chiama questa funzione capisce subito qual
+    // è l'errore (manca l'id) senza dover ispezionare la risposta di rete.
+    throw new Error('getEvents(): serve almeno un deviceId.');
+  }
+
+  // URLSearchParams non supporta nativamente "la stessa chiave ripetuta
+  // più volte" tramite il costruttore a oggetto (es. { deviceId: [1, 2] }
+  // produrrebbe "deviceId=1%2C2", una singola chiave con virgola: NON è
+  // quello che Traccar si aspetta). Costruiamo quindi i parametri a mano
+  // con .append(), che invece permette chiavi ripetute
+  // ("deviceId=1&deviceId=2"), il formato che Traccar richiede per un
+  // parametro "Array of integers".
+  const params = new URLSearchParams();
+  deviceIds.forEach((id) => params.append('deviceId', String(id)));
+  params.set('from', from.toISOString());
+  params.set('to', to.toISOString());
+
+  const response = await fetch(`${REPORTS_EVENTS_URL}?${params.toString()}`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Il server Traccar ha risposto con un errore (HTTP ${response.status}) ` +
+        'durante il recupero degli eventi.',
+    );
+  }
+
+  return (await response.json()) as TraccarEventRaw[];
 }

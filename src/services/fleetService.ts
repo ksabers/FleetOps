@@ -115,22 +115,22 @@ function toVehicle(device: TraccarDeviceRaw, position: TraccarPositionRaw): Vehi
 }
 
 /**
- * Recupera l'elenco dei veicoli con la loro ultima posizione nota — usato
- * dalla pagina "Mappa operativa".
+ * Unisce un elenco di dispositivi Traccar con il rispettivo elenco di
+ * posizioni in un array di Vehicle — la stessa "traduzione" che prima (Step
+ * 6b) viveva solo dentro fetchVehicles(). La esportiamo come funzione a sé
+ * stante perché dallo Step 6c serve ANCHE al hook useLiveVehicles.ts: sia il
+ * primo caricamento via REST sia ogni aggiornamento ricevuto dal WebSocket
+ * devono ricostruire l'elenco di Vehicle nello stesso identico modo, quindi
+ * conviene avere un solo punto che sa farlo.
  *
- * Dallo Step 6b: chiama DAVVERO Traccar (GET /api/devices + GET
- * /api/positions in parallelo con Promise.all, per non aspettare l'una
- * dopo l'altra) e unisce i due risultati in un array di Vehicle tramite
- * toVehicle(). Un dispositivo che non ha ancora nessuna posizione nota
- * (caso raro: un GPS che non ha mai comunicato) viene escluso dall'elenco,
- * perché non avremmo comunque coordinate da mostrare sulla mappa.
+ * Un dispositivo che non ha ancora nessuna posizione nota (caso raro: un
+ * GPS che non ha mai comunicato) viene escluso dall'elenco, perché non
+ * avremmo comunque coordinate da mostrare sulla mappa.
  */
-export async function fetchVehicles(): Promise<Vehicle[]> {
-  // Promise.all: lanciamo le due richieste INSIEME (non una dopo l'altra),
-  // così il tempo di attesa totale è quello della più lenta delle due, non
-  // la somma di entrambe.
-  const [devices, positions] = await Promise.all([getDevices(), getPositions()]);
-
+export function buildVehicles(
+  devices: TraccarDeviceRaw[],
+  positions: TraccarPositionRaw[],
+): Vehicle[] {
   // Trasformiamo l'array di posizioni in una Map indicizzata per deviceId:
   // così, per ogni dispositivo, troviamo la sua posizione con una ricerca
   // istantanea invece di scorrere l'intero array ogni volta (più efficiente
@@ -147,6 +147,24 @@ export async function fetchVehicles(): Promise<Vehicle[]> {
       return posizione ? toVehicle(device, posizione) : null;
     })
     .filter((vehicle): vehicle is Vehicle => vehicle !== null);
+}
+
+/**
+ * Recupera l'elenco dei veicoli con la loro ultima posizione nota — usato
+ * dalla pagina "Mappa operativa" al primissimo caricamento, PRIMA che il
+ * WebSocket (Step 6c, vedi src/hooks/useLiveVehicles.ts) prenda in carico
+ * gli aggiornamenti successivi.
+ *
+ * Dallo Step 6b: chiama DAVVERO Traccar (GET /api/devices + GET
+ * /api/positions in parallelo con Promise.all, per non aspettare l'una
+ * dopo l'altra) e delega a buildVehicles() la traduzione nel nostro tipo.
+ */
+export async function fetchVehicles(): Promise<Vehicle[]> {
+  // Promise.all: lanciamo le due richieste INSIEME (non una dopo l'altra),
+  // così il tempo di attesa totale è quello della più lenta delle due, non
+  // la somma di entrambe.
+  const [devices, positions] = await Promise.all([getDevices(), getPositions()]);
+  return buildVehicles(devices, positions);
 }
 
 /**

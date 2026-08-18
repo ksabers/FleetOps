@@ -1,16 +1,21 @@
-# FleetOps — applicazione (Step 6b: dispositivi e posizioni reali)
+# FleetOps — applicazione (Step 6c: aggiornamenti in tempo reale via WebSocket)
 
 Applicazione web **React + Vite + TypeScript** che riproduce la struttura di
 navigazione e le schermate della PoC (`Fleet Dashboard PoC (standalone).html`),
 pensata per essere riempita ed espansa un pezzo alla volta finché non parlerà
 con un vero **Traccar Server**.
 
-> Stato attuale: **Step 6b completato** — la Mappa operativa ora mostra i
-> veicoli VERI del tuo server Traccar (`GET /api/devices` + `GET
-/api/positions`), non più dati finti. L'Anagrafica veicoli resta invece
-> ancora mock (richiede una decisione su come mappare i campi extra come VIN
-> e reparto sugli attributi personalizzati di Traccar — vedi "Cosa fa già e
-> cosa non fa ancora"). Vedi "Come testare lo Step 6b" più sotto per
+> Stato attuale: **Step 6c completato** — la Mappa operativa non fa più
+> solo una chiamata REST una tantum: apre anche una connessione WebSocket
+> verso Traccar (`/api/socket`) e si aggiorna DA SOLA, in tempo reale, ogni
+> volta che una posizione cambia sul server, con riconnessione automatica se
+> la connessione si interrompe. In più, `traccarApi.getEvents()` (storico
+> eventi/allarmi via `GET /api/reports/events`) è ora una VERA chiamata di
+> rete: nessuna funzione di `traccarApi.ts` resta più uno stub, anche se la
+> pagina "Allarmi e regole" non la usa ancora (vedi "Cosa fa già e cosa non
+> fa ancora"). L'Anagrafica veicoli resta invece ancora mock (richiede una
+> decisione su come mappare i campi extra come VIN e reparto sugli attributi
+> personalizzati di Traccar). Vedi "Come testare lo Step 6c" più sotto per
 > collegarti al tuo server Traccar in locale, e "Avanzamento del progetto"
 > per il dettaglio passo-per-passo.
 
@@ -55,7 +60,18 @@ con un vero **Traccar Server**.
   (`http://localhost:8082` di default), così il browser non incontra mai
   problemi di CORS. Funziona SOLO in `npm run dev`; una build pubblicata
   (Step futuro) richiederà una soluzione diversa — vedi "Cosa fa già e cosa
-  non fa ancora" più sotto.
+  non fa ancora" più sotto. Il proxy ha anche `ws: true`, impostato già allo
+  Step 6a in previsione di questo step: senza quel flag Vite non instrada
+  correttamente il traffico WebSocket (protocollo diverso da una normale
+  richiesta HTTP), solo quello REST.
+- **WebSocket nativo del browser per il tempo reale (Step 6c)**, non una
+  libreria esterna (es. `socket.io-client`): Traccar espone un WebSocket
+  "puro" standard (`/api/socket`), quindi basta l'oggetto `WebSocket` già
+  incorporato nel browser, senza aggiungere dipendenze. La logica di
+  connessione/riconnessione vive isolata in un hook dedicato
+  (`src/hooks/useLiveVehicles.ts`), sullo stesso principio di
+  `traccarApi.ts`: se la gestione dovesse complicarsi, si cambia in un
+  punto solo.
 
 ## Struttura delle cartelle
 
@@ -89,7 +105,11 @@ fleet-dashboard-app/
 │   │   ├── vehicle.ts              tipo Vehicle (dati "live": posizione, stato, velocità)
 │   │   ├── vehicleRegistry.ts      tipo VehicleRegistryEntry (estende Vehicle con dati di anagrafica)
 │   │   ├── traccarDevice.ts        NUOVO (Step 6b): forma grezza di un Device Traccar (GET /api/devices)
-│   │   └── traccarPosition.ts      NUOVO (Step 6b): forma grezza di una Position Traccar (GET /api/positions)
+│   │   ├── traccarPosition.ts      NUOVO (Step 6b): forma grezza di una Position Traccar (GET /api/positions)
+│   │   ├── traccarSocketMessage.ts NUOVO (Step 6c): forma di un messaggio WebSocket (chiavi
+│   │   │                             devices/positions/events opzionali, GET /api/socket)
+│   │   └── traccarEvent.ts         NUOVO (Step 6c): forma grezza di un Event Traccar (GET
+│   │                                 /api/reports/events); pronto ma non ancora usato da nessuna pagina
 │   ├── common/                     "dizionari" tipizzati etichetta+colore per stato/categoria/telemetria
 │   │   ├── vehicleStatus.ts
 │   │   ├── vehicleCategory.ts
@@ -98,7 +118,10 @@ fleet-dashboard-app/
 │   │   ├── mockVehicles.ts
 │   │   └── mockFleetRegistry.ts
 │   ├── hooks/
-│   │   └── useAsyncData.ts        hook riusabile: gestisce caricamento/errore/dati di una Promise
+│   │   ├── useAsyncData.ts        hook riusabile: gestisce caricamento/errore/dati di una Promise
+│   │   └── useLiveVehicles.ts     NUOVO (Step 6c): come useAsyncData, ma dopo il primo caricamento
+│   │                                apre anche il WebSocket e aggiorna i veicoli in tempo reale
+│   │                                (usato SOLO da MapView.tsx, non dalle altre pagine)
 │   ├── utils/
 │   │   └── formatRelativeTime.ts  NUOVO (Step 6b): converte una data ISO in "N minuti fa" ecc.
 │   ├── pages/                 una cartella per ciascuna sezione della sidebar
@@ -131,14 +154,22 @@ fleet-dashboard-app/
 │       ├── fleetService.ts   livello "servizi" usato DAVVERO dalle pagine: dallo Step 6b
 │       │                      fetchVehicles() chiama DAVVERO traccarApi.getDevices() +
 │       │                      getPositions() e traduce il risultato in Vehicle[] tramite
-│       │                      il nuovo helper interno toVehicle(). Le altre funzioni
-│       │                      (allarmi, manutenzione, attività, KPI, stato dispositivi,
+│       │                      il nuovo helper interno toVehicle(). Dallo Step 6c la
+│       │                      traduzione è stata estratta nella funzione esportata
+│       │                      buildVehicles(device[], position[]), riusata anche da
+│       │                      useLiveVehicles.ts per ricostruire l'elenco a ogni
+│       │                      messaggio del WebSocket. Le altre funzioni (allarmi,
+│       │                      manutenzione, attività, KPI, stato dispositivi,
 │       │                      anagrafica) restano ancora mock
 │       └── traccarApi.ts     "ponte" verso Traccar: dallo Step 6a login()/getSession()/
 │                              logout() sono VERE chiamate di rete (POST/GET/DELETE
 │                              /api/session); dallo Step 6b anche getDevices()/
 │                              getPositions() sono VERE chiamate (GET /api/devices,
-│                              GET /api/positions); solo getEvents() resta stub (Step 6c)
+│                              GET /api/positions); dallo Step 6c anche getEvents()
+│                              è una VERA chiamata (GET /api/reports/events) — nessuna
+│                              funzione resta più stub. Il WebSocket (/api/socket) NON
+│                              vive qui: la sua logica di connessione/riconnessione è in
+│                              src/hooks/useLiveVehicles.ts, non in questo semplice ponte
 ```
 
 File aggiuntivi introdotti allo Step 6a:
@@ -243,6 +274,38 @@ modifica il valore `target` dentro `server.proxy['/api']` in
 6. L'Anagrafica veicoli mostra ancora i 7 veicoli finti: non è stata
    toccata in questo step (vedi "Cosa non fa ancora").
 
+### Come testare lo Step 6c (aggiornamenti in tempo reale)
+
+1. Assicurati che Traccar sia in esecuzione (come sopra), avvia l'app
+   (`npm run dev`) ed effettua il login come al solito.
+2. Vai su "Mappa operativa": sotto il titolo della pagina noterai un nuovo
+   piccolo indicatore con un pallino colorato:
+   - **Pallino verde + "Live — aggiornamento in tempo reale"**: il
+     WebSocket è connesso. Da questo momento NON serve più ricaricare la
+     pagina per vedere un veicolo che si muove: la posizione sulla mappa e
+     in lista si aggiornerà da sola quando Traccar riceve un nuovo dato dal
+     dispositivo GPS.
+   - **Pallino grigio + "Riconnessione in corso…"**: il WebSocket si è
+     interrotto (es. hai fermato/riavviato Traccar, o la rete è caduta) e
+     l'app sta ritentando automaticamente ogni 5 secondi; i veicoli mostrati
+     restano gli ultimi conosciuti, "congelati" fino alla riconnessione.
+3. **Prova pratica più semplice** (senza un GPS reale a disposizione): apri
+   gli Strumenti di sviluppo del browser (F12) → scheda "Network"/"Rete" →
+   filtra per "WS" (WebSocket): dovresti vedere una connessione verso
+   `/api/socket` con lo stato "101 Switching Protocols" e, ogni volta che
+   Traccar manda un aggiornamento, un nuovo frame in arrivo nella lista dei
+   messaggi di quella connessione.
+4. **Prova di riconnessione**: mentre l'app è aperta sulla Mappa operativa,
+   ferma il servizio Traccar (o stacca la rete per qualche secondo). Il
+   pallino deve diventare grigio ("Riconnessione in corso…"); riavvia
+   Traccar (o riconnetti la rete): entro pochi secondi il pallino deve
+   tornare verde SENZA che tu debba ricaricare manualmente la pagina.
+5. Se cambi pagina (es. vai su "Anagrafica veicoli") e poi torni su "Mappa
+   operativa", il WebSocket si chiude quando lasci la pagina e se ne apre
+   uno nuovo quando ci torni: è voluto (`useLiveVehicles.ts` chiude la
+   connessione nel cleanup dell'effetto), evita di lasciare connessioni
+   aperte per pagine che l'utente non sta guardando.
+
 > Nota per chi verifica dal thread di Perplexity Computer: l'ambiente
 > sandbox che genera l'anteprima online NON può raggiungere il tuo
 > `localhost:8082`, quindi la build pubblicata mostra solo la schermata di
@@ -329,6 +392,29 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
   come "12 secondi fa" / "3 ore fa", coerente con lo stile già usato nei
   dati mock.
 
+**Novità Step 6c:**
+
+- **Mappa operativa in tempo reale**: dopo il primo caricamento via REST, la
+  pagina apre una connessione WebSocket verso `/api/socket` (nuovo hook
+  `useLiveVehicles.ts`) e riceve da Traccar SOLO le novità (dispositivi e/o
+  posizioni cambiate), senza dover più ricaricare la pagina o fare
+  "polling" (richieste ripetute a intervalli).
+- **Indicatore "Live"/"Riconnessione…"**: un pallino verde/grigio sotto il
+  titolo della Mappa operativa mostra sempre se in questo momento i dati si
+  aggiornano da soli o se la connessione si è interrotta.
+- **Riconnessione automatica**: se il WebSocket si chiude in modo inatteso
+  (rete assente, riavvio del server Traccar...), l'app ritenta la
+  connessione dopo 5 secondi, rifacendo prima una chiamata REST completa
+  per non perdere aggiornamenti persi durante l'interruzione.
+- **`buildVehicles()` estratta e riusata**: la traduzione
+  Device+Position → Vehicle (già introdotta allo Step 6b) è ora una
+  funzione esportata da `fleetService.ts`, usata sia dal primo caricamento
+  sia da ogni aggiornamento in arrivo dal WebSocket — un solo punto dove
+  vive quella logica, invece di duplicarla.
+- **Storico eventi reale**: `traccarApi.getEvents(deviceIds, from, to)`
+  chiama davvero `GET /api/reports/events` (non più uno stub). Non è
+  ancora collegata a nessuna pagina (vedi "Non fa ancora" più sotto).
+
 **Non fa ancora (arriverà nei prossimi passi):**
 
 - La scheda di dettaglio veicolo non include ancora la "Cronologia eventi"
@@ -365,9 +451,22 @@ npx prettier --check "src/**/*.{ts,tsx}"   # controlla la formattazione
 attributes.alarm` è presente, il veicolo passa a stato "Allarme", ma il
   dettaglio del tipo di allarme non è ancora mostrato in UI.
 - Allarmi/manutenzione/attività/KPI/stato dispositivi sono ANCORA dati
-  mock: `fleetService.ts` non chiama ancora `traccarApi.getEvents()`
-  (rimane l'unica funzione stub). Arriverà allo Step 6c insieme al
-  WebSocket per gli aggiornamenti in tempo reale.
+  mock: `traccarApi.getEvents()` esiste ed è già una vera chiamata di rete,
+  ma `fleetService.ts` non la richiama ancora per nessuna di queste pagine.
+  Serve prima decidere come tradurre un evento Traccar (`deviceId` + `type`
+  numerici) nel tipo `Alarm` che la pagina "Allarmi e regole" si aspetta
+  (che vuole già una targa/veicolo leggibile, non un id) — un prossimo step
+  dedicato.
+- Il campo `events` dei messaggi WebSocket viene ricevuto ma IGNORATO per
+  ora (`useLiveVehicles.ts` gestisce solo `devices`/`positions`): un
+  allarme che scatta in tempo reale non fa ancora comparire nulla nella
+  pagina Allarmi, né emette un suono/notifica come fa la web app ufficiale
+  di Traccar. Arriverà insieme al punto precedente.
+- Nessuna gestione dedicata della sessione scaduta durante la connessione
+  live: se il cookie di sessione scade mentre il WebSocket è aperto, il
+  tentativo di riconnessione fallirà silenziosamente (il pallino resta
+  grigio) invece di reindirizzare l'utente a `/login` come fa la web app
+  ufficiale di Traccar in quel caso.
 - Il proxy `/api` di `vite.config.ts` funziona SOLO in sviluppo
   (`npm run dev`): una build pubblicata online (es. su pplx.app) non ha un
   server Vite in ascolto, quindi login e dati reali funzionano solo
@@ -375,36 +474,39 @@ attributes.alarm` è presente, il veicolo passa a stato "Allarme", ma il
   pubblicata nel thread resta quindi "di sola anteprima grafica" per questo
   Step.
 - Nessun refresh automatico del token/sessione: se il cookie scade mentre
-  l'app è aperta, la prossima chiamata protetta fallirà (verrà gestito allo
-  Step 6c, quando ci saranno più chiamate da monitorare).
+  l'app è aperta, la prossima chiamata protetta fallirà (vedi anche il
+  punto sulla sessione scaduta durante la connessione live, appena sopra).
 
 ## Avanzamento del progetto
 
-| Step | Contenuto                                                                     | Stato         |
-| ---- | ----------------------------------------------------------------------------- | ------------- |
-| 1    | Scheletro app React/Vite: layout, sidebar, routing, 7 pagine segnaposto       | ✅ Completato |
-| —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)                 | ✅ Completato |
-| 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker                | ✅ Completato |
-| 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio           | ✅ Completato |
-| 4    | Modulo servizi API (mock → pronto per Traccar reale)                          | ✅ Completato |
-| 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi        | ✅ Completato |
-| 6a   | Login reale su Traccar (`POST/GET/DELETE /api/session`, rotte protette)       | ✅ Completato |
-| 6b   | Elenco dispositivi/posizioni reali (`GET /api/devices`, `GET /api/positions`) | ✅ Completato |
-| 6c   | Aggiornamenti in tempo reale via WebSocket (`/api/socket`)                    | ⏳ Da fare    |
+| Step | Contenuto                                                                         | Stato         |
+| ---- | --------------------------------------------------------------------------------- | ------------- |
+| 1    | Scheletro app React/Vite: layout, sidebar, routing, 7 pagine segnaposto           | ✅ Completato |
+| —    | Migrazione a TypeScript (tsc, ESLint 9 flat config, Prettier)                     | ✅ Completato |
+| 2    | Mappa operativa: lista veicoli mock + mappa Leaflet con marker                    | ✅ Completato |
+| 3    | Anagrafica veicoli: tabella "Registro flotta" + scheda di dettaglio               | ✅ Completato |
+| 4    | Modulo servizi API (mock → pronto per Traccar reale)                              | ✅ Completato |
+| 5    | Altre sezioni: Allarmi, Manutenzione, Attività, KPI, Stato dispositivi            | ✅ Completato |
+| 6a   | Login reale su Traccar (`POST/GET/DELETE /api/session`, rotte protette)           | ✅ Completato |
+| 6b   | Elenco dispositivi/posizioni reali (`GET /api/devices`, `GET /api/positions`)     | ✅ Completato |
+| 6c   | Aggiornamenti in tempo reale via WebSocket (`/api/socket`) + storico eventi reale | ✅ Completato |
 
 ## Prossimi passi pianificati
 
-1. **Step 6c** — Aggiornamenti in tempo reale via WebSocket (`/api/socket`),
-   seguendo lo schema della web app ufficiale (`SocketController.jsx` nel
-   repo `traccar/traccar-web`): niente più "polling", i dati si aggiornano
-   da soli quando cambiano sul server. Includerà anche gli eventi/allarmi
-   reali (`traccarApi.getEvents()`, ultimo stub rimasto).
+1. Collegare la pagina "Allarmi e regole" ai dati reali: decidere come
+   tradurre un Event Traccar (`traccarApi.getEvents()`, già pronta) nel
+   tipo `Alarm` esistente, ed eventualmente gestire anche gli eventi in
+   arrivo dal campo `events` dei messaggi WebSocket (per ora ignorato in
+   `useLiveVehicles.ts`).
 2. Decidere insieme la convenzione per gli attributi personalizzati Traccar
    necessari a collegare l'Anagrafica veicoli ai dati reali (VIN, reparto,
    alimentazione, allestimento, anno di immatricolazione...).
-3. Valutare l'introduzione di uno stato globale condiviso più ampio (Redux
+3. Gestire la sessione scaduta durante la connessione live (reindirizzare a
+   `/login` invece di ritentare all'infinito una riconnessione che fallirà
+   sempre).
+4. Valutare l'introduzione di uno stato globale condiviso più ampio (Redux
    Toolkit) se, con dispositivi/posizioni live, il semplice Context iniziato
    allo Step 6a risultasse limitante.
-4. Valutare come gestire il login e i dati reali anche sulla build
+5. Valutare come gestire il login e i dati reali anche sulla build
    pubblicata online (reverse proxy dedicato o configurazione CORS lato
    Traccar), oggi possibile solo eseguendo l'app in locale.
